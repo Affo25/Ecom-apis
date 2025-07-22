@@ -1,0 +1,73 @@
+const mongoose = require('mongoose');
+
+const categorySchema = new mongoose.Schema({
+  name: { 
+    type: String, 
+    required: true,
+    trim: true
+  },
+  slug: { 
+    type: String, 
+    required: true, 
+    unique: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  image: {
+    type: String,
+    default: null
+  },
+  icon: {
+    type: String,
+    default: null
+  },
+  color: {
+    type: String,
+    default: '#6B7280'
+  },
+  sort_order: {
+    type: Number,
+    default: 0
+  },
+  is_active: {
+    type: Boolean,
+    default: true
+  },
+  is_featured: {
+    type: Boolean,
+    default: false
+  },
+  product_count: {
+    type: Number,
+    default: 0
+  },
+  meta_title: String,
+  meta_description: String,
+  meta_keywords: [String],
+  created_at: { 
+    type: Date, 
+    default: Date.now 
+  },
+  updated_at: { 
+    type: Date, 
+    default: Date.now 
+  }
+});
+
+// Add pre-save middleware to update the updated_at field
+categorySchema.pre('save', function(next) {
+  this.updated_at = new Date();
+  next();
+});
+
+// Ensure virtual fields are serialized
+categorySchema.set('toJSON', { virtuals: true });
+categorySchema.set('toObject', { virtuals: true });
+
+// Create and export the Category model
+const Category = mongoose.model('Category', categorySchema);
+
+module.exports = Category;
