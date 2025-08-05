@@ -21,6 +21,10 @@ const subcategorySchema = new mongoose.Schema({
     ref: 'Category',
     required: true
   },
+   client_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
   image: {
     type: String,
     default: null

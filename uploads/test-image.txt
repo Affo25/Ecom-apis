@@ -1,2 +1,0 @@
-This is a test file to verify that the uploads directory is working correctly.
-Static file serving should be able to serve this file at: http://localhost:5009/uploads/test-image.txt

@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const serverless = require('serverless-http');
 require('dotenv').config();
 
@@ -90,6 +91,7 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser()); // Add cookie parser middleware
 
 // Serve uploaded images from uploads directory - MOVED BEFORE OTHER ROUTES
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
@@ -136,6 +138,7 @@ let cachedConnection = null;
 const connectDB = async () => {
   try {
     if (cachedConnection && mongoose.connection.readyState === 1) {
+      console.log('🔗 Using existing MongoDB connection');
       return cachedConnection;
     }
 
@@ -144,21 +147,47 @@ const connectDB = async () => {
     }
 
     const options = {
-     
+      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      maxPoolSize: 10, // Maintain up to 10 socket connections
     };
 
     console.log('🔄 Connecting to MongoDB...');
+    console.log('🔗 Connection string:', process.env.MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//[USERNAME]:[PASSWORD]@'));
     
     if (mongoose.connection.readyState !== 0) {
+      console.log('🔄 Disconnecting existing connection...');
       await mongoose.disconnect();
     }
 
     cachedConnection = await mongoose.connect(process.env.MONGODB_URI, options);
     console.log('✅ Connected to MongoDB successfully');
+    console.log('📊 Database:', mongoose.connection.name);
+    console.log('🌐 Host:', mongoose.connection.host);
+    
+    // Add connection event listeners
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      cachedConnection = null;
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('📡 MongoDB disconnected');
+      cachedConnection = null;
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔄 MongoDB reconnected');
+    });
     
     return cachedConnection;
   } catch (err) {
-    console.error('❌ MongoDB connection error:', err);
+    console.error('❌ MongoDB connection error:', err.message);
+    console.error('💡 Troubleshooting tips:');
+    console.error('   - Check if MongoDB Atlas is accessible');
+    console.error('   - Verify your IP is whitelisted in MongoDB Atlas');
+    console.error('   - Ensure your database credentials are correct');
+    console.error('   - Check your internet connection');
     cachedConnection = null;
     throw err;
   }
@@ -273,6 +302,9 @@ app.use('/api/categories', ensureDbConnection, require('./routes/categories'));
 app.use('/api/subcategories', ensureDbConnection, require('./routes/subcategories'));
 app.use('/api/admin', ensureDbConnection, require('./routes/admin'));
 app.use('/api/auth', ensureDbConnection, require('./routes/auth'));
+app.use('/api/riders', ensureDbConnection, require('./routes/riders'));
+app.use('/api/cms', ensureDbConnection, require('./routes/cms')); // 📍 CMS ROUTES REGISTERED HERE
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {

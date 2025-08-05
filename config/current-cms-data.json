@@ -1,0 +1,202 @@
+{
+  "banner": {
+    "images": [],
+    "headline": "Welcome to our Brand Store",
+    "subheadline": "Discover your style here",
+    "ctaText": "Shop now",
+    "ctaLink": "/products"
+  },
+  "logo": {
+    "logoUrl": "http://localhost:5009/uploads/logos/logo-1753957343168-826639-Openmarkt-Logo.png",
+    "logoAlt": "Open Market",
+    "faviconUrl": "",
+    "brandColors": {
+      "primary": "#8B5CF6",
+      "secondary": "#6366F1",
+      "accent": "#F59E0B"
+    }
+  },
+  "textContent": {
+    "companyName": "Open Market store",
+    "tagline": "get your style",
+    "aboutUs": "Explore an extensive collection of top-quality products curated just for you. From fashion essentials to home decor, electronics, and beyond, find everything you need in one convenient online store. With unbeatable prices, exceptional customer service, and fast shipping, your shopping experience has never been more satisfying. Shop now and indulge in the best of online retail therapy with Best For Shopping.\n\n",
+    "mission": "To enhance the lives of pets and their owners by offering carefully curated, high-quality products that promote health, happiness, and the special bond between pets and their families.",
+    "vision": "To become the leading pet store that pet owners trust for all their pet care needs, known for quality, expertise, and exceptional customer service.",
+    "values": [
+      {
+        "id": "1",
+        "title": "Pet Safety First",
+        "description": "All our products meet the highest safety standards to ensure your pet's well-being."
+      },
+      {
+        "id": "2",
+        "title": "Quality Assurance",
+        "description": "We carefully select products from trusted brands and manufacturers."
+      },
+      {
+        "id": "3",
+        "title": "Expert Knowledge",
+        "description": "Our team is trained to provide expert advice on pet care and product selection."
+      },
+      {
+        "id": "4",
+        "title": "Customer Satisfaction",
+        "description": "Your satisfaction and your pet's happiness are our top priorities."
+      },
+      {
+        "id": "5",
+        "title": "Community Support",
+        "description": "We actively support local pet shelters and animal welfare organizations."
+      },
+      {
+        "id": "6",
+        "title": "Sustainable Practices",
+        "description": "We promote eco-friendly products and sustainable pet care practices."
+      }
+    ]
+  },
+  "menus": {
+    "headerMenu": [
+      {
+        "id": "1",
+        "label": "Home",
+        "url": "/",
+        "order": 0,
+        "isExternal": false,
+        "openInNewTab": false,
+        "children": []
+      },
+      {
+        "id": "2",
+        "label": "Shop",
+        "url": "/products",
+        "order": 1,
+        "isExternal": false,
+        "openInNewTab": false,
+        "children": [
+          {
+            "id": "2-1",
+            "label": "Dog Products",
+            "url": "/products?category=dogs",
+            "order": 0
+          },
+          {
+            "id": "2-2",
+            "label": "Cat Products",
+            "url": "/products?category=cats",
+            "order": 1
+          },
+          {
+            "id": "2-3",
+            "label": "Bird Products",
+            "url": "/products?category=birds",
+            "order": 2
+          },
+          {
+            "id": "2-4",
+            "label": "Fish Products",
+            "url": "/products?category=fish",
+            "order": 3
+          }
+        ]
+      },
+      {
+        "id": "4",
+        "label": "About Us",
+        "url": "/about",
+        "order": 3,
+        "isExternal": false,
+        "openInNewTab": false,
+        "children": []
+      },
+      {
+        "id": "5",
+        "label": "Contact",
+        "url": "/contact",
+        "order": 4,
+        "isExternal": false,
+        "openInNewTab": false,
+        "children": []
+      }
+    ],
+    "footerMenu": [
+      {
+        "id": "1",
+        "label": "About Us",
+        "url": "/about",
+        "order": 0,
+        "isExternal": false
+      },
+      {
+        "id": "2",
+        "label": "Our Products",
+        "url": "/products",
+        "order": 1,
+        "isExternal": false
+      },
+      {
+        "id": "4",
+        "label": "Contact Us",
+        "url": "/contact",
+        "order": 3,
+        "isExternal": false
+      },
+      {
+        "id": "5",
+        "label": "Shipping Info",
+        "url": "/shipping",
+        "order": 4,
+        "isExternal": false
+      },
+      {
+        "id": "6",
+        "label": "Returns",
+        "url": "/returns",
+        "order": 5,
+        "isExternal": false
+      },
+      {
+        "id": "7",
+        "label": "Privacy Policy",
+        "url": "/privacy",
+        "order": 6,
+        "isExternal": false
+      },
+      {
+        "id": "8",
+        "label": "Terms of Service",
+        "url": "/terms",
+        "order": 7,
+        "isExternal": false
+      }
+    ]
+  },
+  "footer": {
+    "copyright": "© 2024 Open Market Store. All rights reserved.",
+    "contactInfo": {
+      "address": "firdous market, Lahore",
+      "phone": "+92 3228843361",
+      "email": "code5tech@gmail.com",
+      "workingHours": "Mon-Sat: 9AM-8PM, Sun: 10AM-6PM"
+    },
+    "socialLinks": {
+      "facebook": "https://facebook.com/waggystore",
+      "twitter": "https://twitter.com/waggystore",
+      "instagram": "https://instagram.com/waggystore",
+      "linkedin": "https://linkedin.com/company/waggystore",
+      "youtube": "https://youtube.com/waggystore",
+      "tiktok": "https://tiktok.com/@waggystore"
+    },
+    "newsletter": {
+      "enabled": true,
+      "title": "Stay Updated with Waggy Store",
+      "description": "Get the latest pet care tips, product updates, and exclusive offers delivered to your inbox."
+    }
+  },
+  "_id": "688a0e7e1bb10334632db1e3",
+  "theme_name": "theme2",
+  "isActive": true,
+  "created_at": "2025-07-30T13:57:53.560Z",
+  "updated_at": "2025-08-01T07:02:51.061Z",
+  "__v": 0
+}

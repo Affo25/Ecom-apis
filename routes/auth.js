@@ -9,6 +9,9 @@ if (!JWT_SECRET) {
   console.error('❌ JWT_SECRET environment variable is not set');
 }
 
+
+
+
 // Admin login
 router.post('/login', async (req, res) => {
   try {
@@ -62,9 +65,19 @@ router.post('/login', async (req, res) => {
     admin.lastLogin = new Date();
     await admin.save();
     
+    // Set token as HTTP-only cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    });
+    
+    console.log('✅ Login successful, token set in cookie for:', admin.email);
+    
     res.json({
       success: true,
-      token,
+      token, // Still send in response for compatibility
       admin: {
         _id: admin._id,
         id: admin._id,
@@ -145,9 +158,9 @@ router.get('/profile', async (req, res) => {
 // Create admin account (for initial setup)
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, email } = req.body;
+    const { username, password, email,role} = req.body;
     
-    if (!username || !password || !email) {
+    if (!username || !password || !email || !role) {
       return res.status(400).json({ 
         success: false,
         error: 'All fields are required' 
@@ -166,7 +179,7 @@ router.post('/register', async (req, res) => {
       });
     }
     
-    const admin = new Admin({ username, password, email });
+    const admin = new Admin({ username, password, email,role });
     await admin.save();
     
     res.status(201).json({
@@ -198,11 +211,18 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Logout endpoint (optional - mainly for cleanup)
+// Logout endpoint - Clear cookies properly
 router.post('/logout', async (req, res) => {
   try {
-    // In a more sophisticated implementation, you might want to blacklist the token
-    // For now, we just return a success response as the client will handle token removal
+    // Clear the token cookie
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    
+    console.log('✅ Logout successful, cookie cleared');
+    
     res.json({
       success: true,
       message: 'Logged out successfully'
@@ -273,6 +293,30 @@ router.post('/validate', async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: 'Token validation failed' 
+    });
+  }
+});
+
+// Test auth endpoint - Protected route to verify authentication
+router.get('/test', require('../middleware/auth').verifyToken, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Authentication working!',
+      admin: {
+        id: req.admin.id,
+        email: req.admin.email,
+        username: req.admin.username,
+        role: req.admin.role
+      },
+      tokenSource: req.cookies?.token ? 'cookie' : 'header',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Auth test error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Auth test failed' 
     });
   }
 });

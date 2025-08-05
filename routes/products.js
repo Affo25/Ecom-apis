@@ -57,11 +57,8 @@ const upload = multer({
 // Get all products with filtering and pagination
 router.get('/', async (req, res) => {
   try {
-    // Ensure database connection
-    if (mongoose.connection.readyState !== 1) {
-      throw new Error('Database not connected');
-    }
-
+    console.log('📦 Fetching products - DB state:', mongoose.connection.readyState);
+    
     const {
       category,
       page = 1,
