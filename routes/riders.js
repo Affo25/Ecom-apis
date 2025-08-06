@@ -11,12 +11,28 @@ const { uploadImage, deleteImage, getImageUrl } = require('../config/cloudinary'
 // Import Rider model
 const Rider = require('../models/Rider');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Debug endpoint to test database connection and riders
 router.get('/debug', async (req, res) => {
   try {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const riderCount = await Rider.countDocuments();
-    const availableRiderCount = await Rider.countDocuments({ isAvailable: true });
+    const riderCount = await countDocuments(Rider);
+    const availableRiderCount = await countDocuments(Rider, { isAvailable: true });
     
     res.json({
       success: true,
@@ -154,16 +170,16 @@ router.get('/', async (req, res) => {
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Execute query
-    const riders = await Rider.find(filter)
-      .sort(sortObj)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('assignedOrders', 'orderNumber status totalAmount')
-      .lean();
+    // Execute query using generic service
+    const riders = await findAll(Rider, filter, {
+      sort: sortObj,
+      skip: skip,
+      limit: parseInt(limit),
+      lean: true
+    });
 
     // Get total count for pagination
-    const total = await Rider.countDocuments(filter);
+    const total = await countDocuments(Rider, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
 
     res.json({
@@ -193,9 +209,7 @@ router.get('/', async (req, res) => {
 // Get single rider
 router.get('/:id', async (req, res) => {
   try {
-    const rider = await Rider.findById(req.params.id)
-      .populate('assignedOrders', 'orderNumber status totalAmount createdAt')
-      .lean();
+    const rider = await findById(Rider, req.params.id);
     
     if (!rider) {
       return res.status(404).json({
@@ -374,7 +388,7 @@ router.put('/:id', uploadFields, async (req, res) => {
     console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const riderData = req.body;
-    const existingRider = await Rider.findById(req.params.id);
+    const existingRider = await findById(Rider, req.params.id);
     
     if (!existingRider) {
       return res.status(404).json({
@@ -501,12 +515,12 @@ router.put('/:id', uploadFields, async (req, res) => {
 
     console.log('💾 Update data:', updateData);
 
-    // Update rider
-    const updatedRider = await Rider.findByIdAndUpdate(
+    // Update rider using generic service
+    const updatedRider = await updateById(Rider,
       req.params.id,
       updateData,
-      { new: true, runValidators: true }
-    ).populate('assignedOrders', 'orderNumber status totalAmount');
+      { runValidators: true }
+    );
 
     console.log('✅ Rider updated successfully');
 
@@ -548,7 +562,7 @@ router.delete('/:id', async (req, res) => {
   try {
     console.log('🗑️ Deleting rider with ID:', req.params.id);
 
-    const rider = await Rider.findById(req.params.id);
+    const rider = await findById(Rider, req.params.id);
     
     if (!rider) {
       return res.status(404).json({
@@ -586,8 +600,8 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    // Delete rider
-    await Rider.findByIdAndDelete(req.params.id);
+    // Delete rider using generic service
+    await deleteById(Rider, req.params.id);
 
     console.log('✅ Rider deleted successfully');
 
@@ -610,7 +624,7 @@ router.patch('/:id/availability', async (req, res) => {
   try {
     console.log('🔄 Toggling availability for rider:', req.params.id);
 
-    const rider = await Rider.findById(req.params.id);
+    const rider = await findById(Rider, req.params.id);
     
     if (!rider) {
       return res.status(404).json({
@@ -655,7 +669,7 @@ router.get('/available/nearby', async (req, res) => {
       });
     }
 
-    const nearbyRiders = await Rider.find({
+    const nearbyRiders = await findAll(Rider, {
       isAvailable: true,
       location: {
         $near: {

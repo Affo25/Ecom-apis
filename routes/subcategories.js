@@ -6,6 +6,22 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -62,16 +78,16 @@ router.get('/', async (req, res) => {
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Execute query with population
-    const subcategories = await Subcategory.find(filter)
-      .populate('parent_id', 'name slug color')
-      .sort(sortObj)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    // Execute query with generic service
+    const subcategories = await findAll(Subcategory, filter, {
+      sort: sortObj,
+      skip: skip,
+      limit: parseInt(limit),
+      lean: true
+    });
 
     // Get total count for pagination
-    const total = await Subcategory.countDocuments(filter);
+    const total = await countDocuments(Subcategory, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
 
     res.json({
@@ -110,8 +126,7 @@ router.get('/by-parent/:parentId', async (req, res) => {
       filter.is_active = is_active === 'true';
     }
 
-    const subcategories = await Subcategory.find(filter)
-      .populate('parent_id', 'name slug')
+    const subcategories = await findAll(Subcategory, filter)
       .sort({ sort_order: 1, name: 1 })
       .lean();
 
@@ -143,8 +158,7 @@ router.get('/all', async (req, res) => {
       filter.parent_id = parent_id;
     }
 
-    const subcategories = await Subcategory.find(filter)
-      .populate('parent_id', 'name slug')
+    const subcategories = await findAll(Subcategory, filter)
       .select('_id name slug parent_id sort_order')
       .sort({ sort_order: 1, name: 1 })
       .lean();
@@ -324,7 +338,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     console.log('📸 File:', req.file ? 'Yes' : 'No');
 
     const subcategoryData = req.body;
-    const existingSubcategory = await Subcategory.findById(req.params.id);
+    const existingSubcategory = await findById(Subcategory, req.params.id);
     
     if (!existingSubcategory) {
       return res.status(404).json({

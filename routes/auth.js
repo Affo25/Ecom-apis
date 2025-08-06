@@ -3,6 +3,22 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Validate JWT secret
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -24,7 +40,7 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    const admin = await Admin.findOne({ email });
+    const admin = await findOne(Admin, { email });
     console.log(admin);
     
     if (!admin) {
@@ -101,7 +117,13 @@ router.post('/login', async (req, res) => {
 // Get current admin profile
 router.get('/profile', async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    // Try to get token from Authorization header first, then from cookies
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies?.token;
+    
+    console.log('🔍 Profile endpoint - Token sources:');
+    console.log('  - Authorization header:', !!req.headers.authorization);
+    console.log('  - Cookie token:', !!req.cookies?.token);
+    console.log('  - Final token used:', !!token);
     
     if (!token) {
       return res.status(401).json({ 
@@ -123,16 +145,21 @@ router.get('/profile', async (req, res) => {
     if (!admin) {
       return res.status(404).json({ 
         success: false,
-        error: 'Admin not found' 
+        error: 'User not found' 
       });
     }
     
+    console.log('✅ Profile fetched successfully for user:', admin.email);
+    
     res.json({
       success: true,
-      admin
+      data: {
+        admin,
+        user: admin, // Also provide as 'user' for compatibility
+      }
     });
   } catch (error) {
-    console.error('Error fetching admin profile:', error);
+    console.error('Error fetching user profile:', error);
     
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ 

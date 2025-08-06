@@ -5,6 +5,22 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -56,15 +72,16 @@ router.get('/', async (req, res) => {
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Execute query
-    const categories = await Category.find(filter)
-      .sort(sortObj)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    // Execute query using generic service
+    const categories = await findAll(Category, filter, {
+      sort: sortObj,
+      skip: skip,
+      limit: parseInt(limit),
+      lean: true
+    });
 
     // Get total count for pagination
-    const total = await Category.countDocuments(filter);
+    const total = await countDocuments(Category, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
 
     res.json({
@@ -95,10 +112,11 @@ router.get('/', async (req, res) => {
 // Get all categories (simplified for dropdowns)
 router.get('/all', async (req, res) => {
   try {
-    const categories = await Category.find({ is_active: true })
-      .select('_id name slug')
-      .sort({ sort_order: 1, name: 1 })
-      .lean();
+    const categories = await findAll(Category, { is_active: true }, {
+      select: '_id name slug',
+      sort: { sort_order: 1, name: 1 },
+      lean: true
+    });
 
     res.json({
       success: true,
@@ -118,8 +136,7 @@ router.get('/all', async (req, res) => {
 // Get single category
 router.get('/:id', async (req, res) => {
   try {
-    const category = await Category.findById(req.params.id)
-      .lean();
+    const category = await findById(Category, req.params.id);
     
     if (!category) {
       return res.status(404).json({
@@ -171,7 +188,7 @@ router.post('/', upload.single('image'), async (req, res) => {
       .replace(/^-+|-+$/g, '');
 
     // Ensure slug is unique
-    const existingSlug = await Category.findOne({ slug });
+    const existingSlug = await findOne(Category, { slug });
     const finalSlug = existingSlug ? `${slug}-${Date.now()}` : slug;
 
     // Prepare category data
@@ -244,7 +261,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     console.log('📸 File:', req.file ? 'Yes' : 'No');
 
     const categoryData = req.body;
-    const existingCategory = await Category.findById(req.params.id);
+    const existingCategory = await findById(Category, req.params.id);
     
     if (!existingCategory) {
       return res.status(404).json({
@@ -306,7 +323,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
       
-      const existingSlug = await Category.findOne({ 
+      const existingSlug = await findOne(Category, { 
         slug: newSlug, 
         _id: { $ne: req.params.id } 
       });
@@ -314,7 +331,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       updateData.slug = existingSlug ? `${newSlug}-${Date.now()}` : newSlug;
     }
 
-    const updatedCategory = await Category.findByIdAndUpdate(
+    const updatedCategory = await updateById(Category,
       req.params.id,
       updateData,
       { new: true, runValidators: true }
@@ -379,7 +396,7 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    await Category.findByIdAndDelete(req.params.id);
+    await deleteById(Category, req.params.id);
 
     console.log('✅ Category deleted successfully');
 

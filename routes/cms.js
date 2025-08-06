@@ -6,6 +6,22 @@ const path = require('path');
 const { verifyToken: auth } = require('../middleware/auth');
 const  {CMS}  = require('../models/Cms');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Ensure upload directories exist
 const ensureUploadDirs = () => {
   const bannerDir = path.join(__dirname, '../uploads/banner');
@@ -164,7 +180,7 @@ router.post('/save', auth, upload.fields([
     }
 
     // Save to database
-    let savedCMS = await CMS.findOneAndUpdate(
+    let savedCMS = await updateOne(CMS,
       { theme_name: theme, isActive: true },
       { 
         ...parsedData,
@@ -173,7 +189,6 @@ router.post('/save', auth, upload.fields([
         updated_at: new Date()
       },
       { 
-        new: true, 
         upsert: true,
         setDefaultsOnInsert: true
       }
@@ -201,7 +216,7 @@ router.get('/update/:themeName?', auth, async (req, res) => {
     const themeName = req.params.themeName || 'theme2';
     console.log(`🔍 Getting CMS config for admin: ${themeName}`);
 
-    const cmsData = await CMS.findOne({ 
+    const cmsData = await findOne(CMS, { 
       theme_name: themeName, 
       isActive: true 
     });
@@ -238,14 +253,13 @@ router.put('/update/:themeName?', auth, async (req, res) => {
     const themeName = req.params.themeName || 'theme2';
     const updateData = req.body;
 
-    const updatedCMS = await CMS.findOneAndUpdate(
+    const updatedCMS = await updateOne(CMS,
       { theme_name: themeName, isActive: true },
       { 
         ...updateData, 
         updated_at: new Date() 
       },
       { 
-        new: true, 
         upsert: true 
       }
     );
@@ -426,7 +440,7 @@ router.post('/reset', auth, async (req, res) => {
     console.log('🔄 Resetting CMS configuration to default');
 
     // Deactivate all existing CMS configurations
-    await CMS.updateMany(
+    await updateMany(CMS,
       {},
       { isActive: false, updated_at: new Date() }
     );

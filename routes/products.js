@@ -9,12 +9,28 @@ const fs = require('fs');
 // Import local image handling configuration
 const { uploadImage, deleteImage, getImageUrl } = require('../config/cloudinary');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Debug endpoint to test database connection and products
 router.get('/debug', async (req, res) => {
   try {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const productCount = await Product.countDocuments();
-    const activeProductCount = await Product.countDocuments({ is_active: true });
+    const productCount = await countDocuments(Product);
+    const activeProductCount = await countDocuments(Product, { is_active: true });
     
     res.json({
       success: true,
@@ -112,15 +128,16 @@ router.get('/', async (req, res) => {
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Execute query
-    const products = await Product.find(filter)
-      .sort(sortObj)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    // Execute query using generic service
+    const products = await findAll(Product, filter, {
+      sort: sortObj,
+      skip: skip,
+      limit: parseInt(limit),
+      lean: true
+    });
 
     // Get total count for pagination
-    const total = await Product.countDocuments(filter);
+    const total = await countDocuments(Product, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
 
     res.json({
@@ -150,7 +167,7 @@ router.get('/', async (req, res) => {
 // Get single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).lean();
+    const product = await findById(Product, req.params.id);
     
     if (!product) {
       return res.status(404).json({
@@ -279,7 +296,7 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       .replace(/^-+|-+$/g, '');
 
     // Ensure slug is unique
-    const existingSlug = await Product.findOne({ slug: newProductData.slug });
+    const existingSlug = await findOne(Product, { slug: newProductData.slug });
     if (existingSlug) {
       newProductData.slug = `${newProductData.slug}-${Date.now()}`;
     }
@@ -293,9 +310,8 @@ router.post('/', upload.array('images', 10), async (req, res) => {
 
     console.log('💾 Final comprehensive product data:', newProductData);
 
-    // Create product with comprehensive data
-    const product = new Product(newProductData);
-    await product.save();
+    // Create product with comprehensive data using generic service
+    const product = await insertOne(Product, newProductData);
 
     console.log('✅ Product created successfully with all fields');
 
@@ -340,7 +356,7 @@ router.put('/:id', upload.array('images', 10), async (req, res) => {
     console.log('📸 Files count:', req.files ? req.files.length : 0);
 
     const productData = req.body;
-    const existingProduct = await Product.findById(req.params.id);
+    const existingProduct = await findById(Product, req.params.id);
     
     if (!existingProduct) {
       return res.status(404).json({
@@ -456,7 +472,7 @@ router.put('/:id', upload.array('images', 10), async (req, res) => {
         .replace(/^-+|-+$/g, '');
       
       // Ensure slug is unique
-      const existingSlug = await Product.findOne({ slug: updateData.slug, _id: { $ne: req.params.id } });
+      const existingSlug = await findOne(Product, { slug: updateData.slug, _id: { $ne: req.params.id } });
       if (existingSlug) {
         updateData.slug = `${updateData.slug}-${Date.now()}`;
       }
@@ -473,16 +489,11 @@ router.put('/:id', upload.array('images', 10), async (req, res) => {
 
     console.log('💾 Final comprehensive update data:', updateData);
 
-    // Update product
-    const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { 
-        new: true, 
-        runValidators: true,
-        omitUndefined: true
-      }
-    );
+    // Update product using generic service
+    const updatedProduct = await updateById(Product, req.params.id, updateData, { 
+      runValidators: true,
+      omitUndefined: true
+    });
 
     if (!updatedProduct) {
       return res.status(404).json({
@@ -540,7 +551,7 @@ router.patch('/:id', async (req, res) => {
     console.log('📦 Request body:', req.body);
 
     const productData = req.body;
-    const existingProduct = await Product.findById(req.params.id);
+    const existingProduct = await findById(Product, req.params.id);
     
     if (!existingProduct) {
       return res.status(404).json({
@@ -618,7 +629,7 @@ router.patch('/:id', async (req, res) => {
         .replace(/^-+|-+$/g, '');
       
       // Ensure slug is unique
-      const existingSlug = await Product.findOne({ slug: updateData.slug, _id: { $ne: req.params.id } });
+      const existingSlug = await findOne(Product, { slug: updateData.slug, _id: { $ne: req.params.id } });
       if (existingSlug) {
         updateData.slug = `${updateData.slug}-${Date.now()}`;
       }
@@ -635,16 +646,11 @@ router.patch('/:id', async (req, res) => {
 
     console.log('💾 Final comprehensive patch data:', updateData);
 
-    // Update product
-    const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { 
-        new: true, 
-        runValidators: true,
-        omitUndefined: true
-      }
-    );
+    // Update product using generic service
+    const updatedProduct = await updateById(Product, req.params.id, updateData, { 
+      runValidators: true,
+      omitUndefined: true
+    });
 
     if (!updatedProduct) {
       return res.status(404).json({
@@ -698,7 +704,7 @@ router.patch('/:id', async (req, res) => {
 // Delete product
 router.delete('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await findById(Product, req.params.id);
     
     if (!product) {
       return res.status(404).json({
@@ -721,7 +727,7 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    await Product.findByIdAndDelete(req.params.id);
+    await deleteById(Product, req.params.id);
 
     res.json({
       success: true,
@@ -740,7 +746,7 @@ router.delete('/:id', async (req, res) => {
 // Get product categories
 router.get('/categories/list', async (req, res) => {
   try {
-    const categories = await Product.distinct('categories', { is_active: true });
+    const categories = await distinct(Product, 'categories', { is_active: true });
     
     res.json({
       success: true,
@@ -877,7 +883,7 @@ router.patch('/bulk/update', async (req, res) => {
     if (bulkUpdateData.is_active !== undefined) bulkUpdateData.is_active = Boolean(bulkUpdateData.is_active);
 
     // Perform bulk update
-    const result = await Product.updateMany(
+    const result = await updateMany(Product,
       { _id: { $in: productIds } },
       { $set: bulkUpdateData },
       { runValidators: true }
@@ -908,7 +914,7 @@ router.post('/test-update/:id', async (req, res) => {
     console.log('🧪 Testing product update with ID:', req.params.id);
     console.log('📦 Test data:', req.body);
 
-    const product = await Product.findById(req.params.id);
+    const product = await findById(Product, req.params.id);
     
     if (!product) {
       return res.status(404).json({
@@ -925,7 +931,7 @@ router.post('/test-update/:id', async (req, res) => {
       updated_at: new Date()
     };
 
-    const updatedProduct = await Product.findByIdAndUpdate(
+    const updatedProduct = await updateById(Product,
       req.params.id,
       testUpdate,
       { new: true, runValidators: true }
@@ -985,13 +991,14 @@ router.patch('/:id/status', async (req, res) => {
 // Add featured products endpoint
 router.get('/featured/list', async (req, res) => {
   try {
-    const featuredProducts = await Product.find({ 
+    const featuredProducts = await findAll(Product, { 
       is_active: true,
       featured: true 
-    })
-    .sort({ createdAt: -1 })
-    .limit(8)
-    .lean();
+    }, {
+      sort: { createdAt: -1 },
+      limit: 8,
+      lean: true
+    });
 
     res.json({
       success: true,

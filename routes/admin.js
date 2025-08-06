@@ -4,152 +4,23 @@ const { verifyToken } = require('../middleware/auth');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 
-// Apply authentication middleware to all admin routes
-router.use(verifyToken);
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
 
-// Get dashboard statistics
-router.get('/dashboard', async (req, res) => {
-  try {
-    const totalProducts = await Product.countDocuments();
-    const totalOrders = await Order.countDocuments();
-    const pendingOrders = await Order.countDocuments({ status: 'Pending' });
-    
-    const totalRevenue = await Order.aggregate([
-      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-    ]);
-    
-    const recentOrders = await Order.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('items.product')
-      .lean();
-    
-    const lowStockProducts = await Product.find({ inStock: false }).limit(5).lean();
-    
-    res.json({
-      stats: {
-        totalProducts,
-        totalOrders,
-        pendingOrders,
-        totalRevenue: totalRevenue[0]?.total || 0,
-      },
-      recentOrders,
-      lowStockProducts,
-    });
-  } catch (error) {
-    console.error('Error fetching dashboard data:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard data' });
-  }
-});
-
-// Get all products for admin
-router.get('/products', async (req, res) => {
-  try {
-    const { page = 1, limit = 20, category, featured } = req.query;
-    
-    const filter = {};
-    if (category) filter.category = category;
-    if (featured !== undefined) filter.featured = featured === 'true';
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const products = await Product.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
-    
-    const total = await Product.countDocuments(filter);
-    const totalPages = Math.ceil(total / parseInt(limit));
-    
-    res.json({
-      products,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages,
-        total,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1,
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching admin products:', error);
-    res.status(500).json({ error: 'Failed to fetch products' });
-  }
-});
-
-// Get all orders for admin
-router.get('/orders', async (req, res) => {
-  try {
-    const { page = 1, limit = 20, status } = req.query;
-    
-    const filter = {};
-    if (status) filter.status = status;
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('items.product')
-      .lean();
-    
-    const total = await Order.countDocuments(filter);
-    const totalPages = Math.ceil(total / parseInt(limit));
-    
-    res.json({
-      orders,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages,
-        total,
-        hasNext: parseInt(page) < totalPages,
-        hasPrev: parseInt(page) > 1,
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching admin orders:', error);
-    res.status(500).json({ error: 'Failed to fetch orders' });
-  }
-});
-
-// Update order status
-router.patch('/orders/:id/status', async (req, res) => {
-  try {
-    const { status } = req.body;
-    
-    if (!['Pending', 'Dispatched', 'Delivered', 'Cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-    
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { 
-        status,
-        updatedAt: new Date(),
-        ...(status === 'Dispatched' && { dispatchedAt: new Date() }),
-        ...(status === 'Delivered' && { deliveredAt: new Date() }),
-        ...(status === 'Cancelled' && { cancelledAt: new Date() })
-      },
-      { new: true, runValidators: true }
-    ).populate('items.product');
-    
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-    
-    res.json({
-      success: true,
-      message: `Order ${status.toLowerCase()} successfully`,
-      data: order
-    });
-  } catch (error) {
-    console.error('Error updating order status:', error);
-    res.status(500).json({ error: 'Failed to update order status' });
-  }
-});
-
+// Analytics routes (No authentication required)
 // Get comprehensive analytics
 router.get('/analytics', async (req, res) => {
   try {
@@ -366,6 +237,152 @@ router.get('/analytics/orders', async (req, res) => {
       message: 'Failed to fetch order analytics',
       error: error.message 
     });
+  }
+});
+
+// Apply authentication middleware to all other admin routes
+router.use(verifyToken);
+
+// Get dashboard statistics
+router.get('/dashboard', async (req, res) => {
+  try {
+    const totalProducts = await countDocuments(Product);
+    const totalOrders = await countDocuments(Order);
+    const pendingOrders = await countDocuments(Order, { status: 'Pending' });
+    
+    const totalRevenue = await Order.aggregate([
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+    ]);
+    
+    const recentOrders = await findAll(Order, {}, {
+      sort: { createdAt: -1 },
+      limit: 5,
+      lean: true
+    });
+    
+    const lowStockProducts = await Product.find({ inStock: false }).limit(5).lean();
+    
+    res.json({
+      stats: {
+        totalProducts,
+        totalOrders,
+        pendingOrders,
+        totalRevenue: totalRevenue[0]?.total || 0,
+      },
+      recentOrders,
+      lowStockProducts,
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+});
+
+// Get all products for admin
+router.get('/products', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, category, featured } = req.query;
+    
+    const filter = {};
+    if (category) filter.category = category;
+    if (featured !== undefined) filter.featured = featured === 'true';
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const products = await Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+    
+    const total = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(total / parseInt(limit));
+    
+    res.json({
+      products,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        total,
+        hasNext: parseInt(page) < totalPages,
+        hasPrev: parseInt(page) > 1,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching admin products:', error);
+    res.status(500).json({ error: 'Failed to fetch products' });
+  }
+});
+
+// Get all orders for admin
+router.get('/orders', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status } = req.query;
+    
+    const filter = {};
+    if (status) filter.status = status;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const orders = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('items.product')
+      .lean();
+    
+    const total = await Order.countDocuments(filter);
+    const totalPages = Math.ceil(total / parseInt(limit));
+    
+    res.json({
+      orders,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        total,
+        hasNext: parseInt(page) < totalPages,
+        hasPrev: parseInt(page) > 1,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching admin orders:', error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// Update order status
+router.patch('/orders/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    
+    if (!['Pending', 'Dispatched', 'Delivered', 'Cancelled'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { 
+        status,
+        updatedAt: new Date(),
+        ...(status === 'Dispatched' && { dispatchedAt: new Date() }),
+        ...(status === 'Delivered' && { deliveredAt: new Date() }),
+        ...(status === 'Cancelled' && { cancelledAt: new Date() })
+      },
+      { new: true, runValidators: true }
+    ).populate('items.product');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: `Order ${status.toLowerCase()} successfully`,
+      data: order
+    });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({ error: 'Failed to update order status' });
   }
 });
 

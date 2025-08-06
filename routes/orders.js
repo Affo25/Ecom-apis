@@ -3,13 +3,29 @@ const router = express.Router();
 const Order = require('../models/Order');
 const { verifyToken } = require('../middleware/auth');
 
+// Import generic database service
+const {
+  findAll,
+  findOne,
+  findById,
+  insertOne,
+  updateOne,
+  updateById,
+  deleteOne,
+  deleteById,
+  countDocuments,
+  exists,
+  distinct,
+  updateMany
+} = require('../services/mongoose_service');
+
 // Debug endpoint to test database connection and orders
 router.get('/debug', async (req, res) => {
   try {
-    const orderCount = await Order.countDocuments();
-    const pendingOrders = await Order.countDocuments({ status: 'Pending' });
-    const dispatchedOrders = await Order.countDocuments({ status: 'Dispatched' });
-    const deliveredOrders = await Order.countDocuments({ status: 'Delivered' });
+    const orderCount = await countDocuments(Order);
+    const pendingOrders = await countDocuments(Order, { status: 'Pending' });
+    const dispatchedOrders = await countDocuments(Order, { status: 'Dispatched' });
+    const deliveredOrders = await countDocuments(Order, { status: 'Delivered' });
     
     res.json({
       success: true,
@@ -110,14 +126,14 @@ router.get('/', async (req, res) => {
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('items.product')
-      .lean();
+    const orders = await findAll(Order, filter, {
+      sort: { createdAt: -1 },
+      skip: skip,
+      limit: parseInt(limit),
+      lean: true
+    });
     
-    const total = await Order.countDocuments(filter);
+    const total = await countDocuments(Order, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
     
     res.json({
@@ -147,9 +163,7 @@ router.get('/', async (req, res) => {
 // Get single order
 router.get('/:id', async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
-      .populate('items.product')
-      .lean();
+    const order = await findById(Order, req.params.id);
     
     if (!order) {
       return res.status(404).json({ 
@@ -275,10 +289,8 @@ router.post('/', verifyToken, async (req, res) => {
       const savedOrder = await order.save();
       console.log('🛒 Order saved successfully:', savedOrder._id);
       
-      // Populate the order with product details
-      const populatedOrder = await Order.findById(savedOrder._id)
-        .populate('items.product')
-        .lean();
+      // Populate the order with product details - using direct findById for now
+      const populatedOrder = await findById(Order, savedOrder._id);
       
       console.log('🛒 Order populated successfully:', populatedOrder._id);
       
@@ -391,7 +403,7 @@ router.patch('/:id/dispatch', async (req, res) => {
   try {
     const { trackingNumber, carrier, estimatedDelivery } = req.body;
     
-    const order = await Order.findById(req.params.id);
+    const order = await findById(Order, req.params.id);
     
     if (!order) {
       return res.status(404).json({ 
@@ -407,7 +419,7 @@ router.patch('/:id/dispatch', async (req, res) => {
       });
     }
     
-    const updatedOrder = await Order.findByIdAndUpdate(
+    const updatedOrder = await updateById(Order,
       req.params.id,
       { 
         status: 'Dispatched',
@@ -442,7 +454,7 @@ router.patch('/:id/cancel', async (req, res) => {
   try {
     const { reason } = req.body;
     
-    const order = await Order.findById(req.params.id);
+    const order = await findById(Order, req.params.id);
     
     if (!order) {
       return res.status(404).json({ 
@@ -458,7 +470,7 @@ router.patch('/:id/cancel', async (req, res) => {
       });
     }
     
-    const updatedOrder = await Order.findByIdAndUpdate(
+    const updatedOrder = await updateById(Order,
       req.params.id,
       { 
         status: 'Cancelled',
@@ -487,7 +499,7 @@ router.patch('/:id/cancel', async (req, res) => {
 // Delete order (admin only)
 router.delete('/:id', async (req, res) => {
   try {
-    const order = await Order.findByIdAndDelete(req.params.id);
+    const order = await deleteById(Order, req.params.id);
     
     if (!order) {
       return res.status(404).json({ 
@@ -514,11 +526,11 @@ router.delete('/:id', async (req, res) => {
 // Get order statistics (admin only)
 router.get('/stats/summary', async (req, res) => {
   try {
-    const totalOrders = await Order.countDocuments();
-    const pendingOrders = await Order.countDocuments({ status: 'Pending' });
-    const dispatchedOrders = await Order.countDocuments({ status: 'Dispatched' });
-    const deliveredOrders = await Order.countDocuments({ status: 'Delivered' });
-    const cancelledOrders = await Order.countDocuments({ status: 'Cancelled' });
+    const totalOrders = await countDocuments(Order);
+    const pendingOrders = await countDocuments(Order, { status: 'Pending' });
+    const dispatchedOrders = await countDocuments(Order, { status: 'Dispatched' });
+    const deliveredOrders = await countDocuments(Order, { status: 'Delivered' });
+    const cancelledOrders = await countDocuments(Order, { status: 'Cancelled' });
     
     const totalRevenue = await Order.aggregate([
       { $match: { status: { $ne: 'Cancelled' } } },
