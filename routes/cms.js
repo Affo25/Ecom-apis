@@ -24,54 +24,9 @@ const {
   updateMany
 } = require('../services/mongoose_service');
 
-// Ensure upload directories exist
-const ensureUploadDirs = () => {
-  const bannerDir = path.join(__dirname, '../uploads/banner');
-  const logoDir = path.join(__dirname, '../uploads/logo');
 
-  [bannerDir, logoDir].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  });
-};
 
-ensureUploadDirs();
 
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const fieldName = file.fieldname;
-      let uploadPath;
-      
-      if (fieldName === 'banner' || fieldName === 'banners') {
-        uploadPath = path.join(__dirname, '../uploads/banner');
-      } else if (fieldName === 'logo') {
-        uploadPath = path.join(__dirname, '../uploads/logo');
-      } else {
-        uploadPath = path.join(__dirname, '../uploads');
-      }
-      
-      cb(null, uploadPath);
-    },
-    filename: (req, file, cb) => {
-      const timestamp = Date.now();
-      const random = Math.floor(Math.random() * 1000);
-      const ext = path.extname(file.originalname);
-      const name = file.originalname.replace(ext, '').replace(/[^a-zA-Z0-9]/g, '-');
-      cb(null, `${timestamp}-${random}-${name}${ext}`);
-    }
-  }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files allowed'), false);
-    }
-  }
-});
 
 // ✅ GET CMS Data by Theme Name
 router.get('/:themeName?', async (req, res) => {
