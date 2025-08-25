@@ -5,9 +5,11 @@ const multer = require('multer');
 const path = require('path');
 const mongoose = require('mongoose');
 const fs = require('fs');
+const { verifyToken } = require('../middleware/auth');
 
-// Import local image handling configuration
-const { uploadImage, deleteImage, getImageUrl } = require('../config/cloudinary');
+// Import R2 image handling
+const R2ImageService = require('../services/R2ImageService');
+const { productImageUpload } = require('../middleware/r2Upload');
 
 // Import generic database service
 const {
@@ -191,34 +193,36 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create new product - Comprehensive creation with all fields
-router.post('/', upload.array('images', 10), async (req, res) => {
+// Create new product with R2 image upload
+router.post('/', verifyToken, productImageUpload, async (req, res) => {
   try {
-    console.log('🆕 Creating new product');
+    console.log('🆕 Creating new product with R2');
     console.log('📦 Request body:', req.body);
-    console.log('📸 Files count:', req.files ? req.files.length : 0);
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const productData = req.body;
     
-    // Handle image uploads
+    // Handle image uploads to R2
     const imageUrls = [];
-    if (req.files && req.files.length > 0) {
-      console.log(`📤 Uploading ${req.files.length} images locally...`);
+    if (req.files && req.files.images && req.files.images.length > 0) {
+      console.log(`📤 Uploading ${req.files.images.length} images to R2...`);
       
-      for (const file of req.files) {
-        try {
-          const result = await uploadImage(file, 'products');
-          imageUrls.push(result.url);
-          console.log(`Image uploaded: ${result.url}`);
-        } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          // Continue with other images if one fails
-        }
+      try {
+        const r2Service = req.r2Service;
+        const uploadResults = await r2Service.uploadMultipleImages(req.files.images, 'products');
+        imageUrls.push(...uploadResults.map(result => result.url));
+        console.log(`✅ R2 Images uploaded: ${imageUrls.length} files`);
+      } catch (uploadError) {
+        console.error('❌ R2 upload error:', uploadError);
+        // Continue without images if upload fails
       }
     }
 
     // Prepare comprehensive product data
     const newProductData = {
+      // Required client_id - use from auth or default
+      client_id: req.user?.id || new require('mongoose').Types.ObjectId(),
+      
       // Basic Product Information
       name: productData.name || 'Untitled Product',
       description: productData.description || '',
@@ -349,11 +353,11 @@ router.post('/', upload.array('images', 10), async (req, res) => {
 });
 
 // Update product - Comprehensive update with all fields
-router.put('/:id', upload.array('images', 10), async (req, res) => {
+router.put('/:id', verifyToken, productImageUpload, async (req, res) => {
   try {
-    console.log('🔄 Updating product with ID:', req.params.id);
+    console.log('🔄 Updating product with R2 integration');
     console.log('📦 Request body:', req.body);
-    console.log('📸 Files count:', req.files ? req.files.length : 0);
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const productData = req.body;
     const existingProduct = await findById(Product, req.params.id);
@@ -365,43 +369,69 @@ router.put('/:id', upload.array('images', 10), async (req, res) => {
       });
     }
 
-    // Handle image operations
-    let imageUrls = [...(existingProduct.images || [])];
+    // Handle image operations with better logic
+    let imageUrls = [];
     
-    // Handle image deletions if provided
-    if (productData.deletedImages && Array.isArray(productData.deletedImages)) {
-      console.log('🗑️ Deleting images:', productData.deletedImages);
-      for (const imageUrl of productData.deletedImages) {
-        try {
-          const filename = imageUrl.split('/').pop();
-          await deleteImage(filename);
-          imageUrls = imageUrls.filter(url => url !== imageUrl);
-          console.log(`Deleted image: ${filename}`);
-        } catch (deleteError) {
-          console.error('Error deleting image:', deleteError);
-        }
+    // Parse JSON strings from FormData
+    let deletedImages = [];
+    let existingImages = [];
+    
+    if (productData.deletedImages) {
+      try {
+        deletedImages = JSON.parse(productData.deletedImages);
+        console.log('🗑️ Images to delete:', deletedImages);
+      } catch (e) {
+        console.error('❌ Error parsing deletedImages:', e);
       }
     }
-
-    // Handle new image uploads
-    if (req.files && req.files.length > 0) {
-      console.log(`📤 Uploading ${req.files.length} new images locally...`);
+    
+    if (productData.existingImages) {
+      try {
+        existingImages = JSON.parse(productData.existingImages);
+        console.log('📋 Existing images to keep:', existingImages);
+      } catch (e) {
+        console.error('❌ Error parsing existingImages:', e);
+      }
+    }
+    
+    // Start with existing images that should be kept
+    if (existingImages.length > 0) {
+      imageUrls = [...existingImages];
+    }
+    
+    // Handle image deletions from R2
+    if (deletedImages.length > 0) {
+      console.log('🗑️ Deleting images from R2:', deletedImages);
+      const r2Service = req.r2Service;
       
-      for (const file of req.files) {
+      for (const imageUrl of deletedImages) {
         try {
-          const result = await uploadImage(file, 'products');
-          imageUrls.push(result.url);
-          console.log(`Image uploaded: ${result.url}`);
-        } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
+          await r2Service.deleteImage(imageUrl);
+          console.log(`✅ Deleted image from R2: ${imageUrl}`);
+        } catch (deleteError) {
+          console.error('❌ Error deleting image from R2:', deleteError);
         }
       }
     }
 
-    // If images are provided directly (replacing all images)
-    if (productData.images && Array.isArray(productData.images)) {
-      imageUrls = productData.images;
+    // Handle new image uploads to R2
+    if (req.files && req.files.images && req.files.images.length > 0) {
+      console.log(`📤 Uploading ${req.files.images.length} new images to R2...`);
+      
+      try {
+        const r2Service = req.r2Service;
+        const uploadResults = await r2Service.uploadMultipleImages(req.files.images, 'products');
+        const newImageUrls = uploadResults.map(result => result.url);
+        imageUrls.push(...newImageUrls);
+        console.log(`✅ R2 Images uploaded: ${newImageUrls.length} files`);
+        console.log('📍 New image URLs:', newImageUrls);
+      } catch (uploadError) {
+        console.error('❌ R2 upload error:', uploadError);
+        // Continue without the failed uploads but log the error
+      }
     }
+    
+    console.log('📊 Final image URLs for product:', imageUrls.length, 'images');
 
     // Prepare comprehensive update data
     const updateData = {
@@ -702,8 +732,10 @@ router.patch('/:id', async (req, res) => {
 });
 
 // Delete product
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
+    console.log('🗑️ Deleting product with ID:', req.params.id);
+    
     const product = await findById(Product, req.params.id);
     
     if (!product) {
@@ -713,28 +745,32 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Delete images from local storage
+    // Delete images from R2 storage
     if (product.images && product.images.length > 0) {
+      console.log(`📸 Deleting ${product.images.length} images from R2...`);
+      const r2Service = req.r2Service || new (require('../services/R2ImageService'))();
+      
       for (const imageUrl of product.images) {
         try {
-          // Extract filename from URL
-          const filename = imageUrl.split('/').pop();
-          await deleteImage(filename);
-          console.log(`Deleted image: ${filename}`);
+          await r2Service.deleteImage(imageUrl);
+          console.log(`✅ Deleted image from R2: ${imageUrl}`);
         } catch (deleteError) {
-          console.error('Error deleting image from local storage:', deleteError);
+          console.error('❌ Error deleting image from R2:', deleteError);
+          // Continue with other deletions even if one fails
         }
       }
     }
 
     await deleteById(Product, req.params.id);
 
+    console.log('✅ Product deleted successfully');
     res.json({
       success: true,
-      message: 'Product deleted successfully'
+      message: 'Product deleted successfully',
+      data: { deletedProductId: req.params.id }
     });
   } catch (error) {
-    console.error('Error deleting product:', error);
+    console.error('❌ Error deleting product:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete product',

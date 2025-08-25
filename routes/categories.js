@@ -3,7 +3,10 @@ const router = express.Router();
 const Category = require('../models/Category');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { uploadImage, deleteImage } = require('../config/cloudinary');
+
+const { categoryImageUpload } = require('../middleware/r2Upload');
+const R2ImageService = require('../services/R2ImageService');
+const { verifyToken } = require('../middleware/auth');
 
 // Import generic database service
 const {
@@ -25,7 +28,7 @@ const {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB per file
+    fileSize: 10 * 1024 * 1024, // 10MB per file
     files: 1 // Maximum 1 file for category image
   },
   fileFilter: function (req, file, cb) {
@@ -160,24 +163,25 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create new category
-router.post('/', upload.single('image'), async (req, res) => {
+// Create new category with R2 image upload
+router.post('/', verifyToken, categoryImageUpload, async (req, res) => {
   try {
-    console.log('🆕 Creating new category');
+    console.log('🆕 Creating new category with R2');
     console.log('📦 Request body:', req.body);
-    console.log('📸 File:', req.file ? 'Yes' : 'No');
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const categoryData = req.body;
     
-    // Handle image upload
+    // Handle image upload to R2
     let imageUrl = null;
-    if (req.file) {
+    if (req.files && req.files.image) {
       try {
-        const result = await uploadImage(req.file, 'categories');
+        const r2Service = req.r2Service;
+        const result = await r2Service.uploadSingleImage(req.files.image[0], 'categories');
         imageUrl = result.url;
-        console.log(`Image uploaded: ${imageUrl}`);
+        console.log(`✅ R2 Image uploaded: ${imageUrl}`);
       } catch (uploadError) {
-        console.error('Error uploading image:', uploadError);
+        console.error('❌ R2 upload error:', uploadError);
       }
     }
 
@@ -188,11 +192,14 @@ router.post('/', upload.single('image'), async (req, res) => {
       .replace(/^-+|-+$/g, '');
 
     // Ensure slug is unique
-    const existingSlug = await findOne(Category, { slug });
+    const existingSlug = await Category.findOne({ slug });
     const finalSlug = existingSlug ? `${slug}-${Date.now()}` : slug;
 
     // Prepare category data
     const newCategoryData = {
+      // Required client_id - use admin's ID from auth
+      client_id: req.user?.id || req.admin?.id || new require('mongoose').Types.ObjectId(),
+      
       name: categoryData.name || 'Untitled Category',
       slug: finalSlug,
       description: categoryData.description || '',
@@ -200,8 +207,8 @@ router.post('/', upload.single('image'), async (req, res) => {
       icon: categoryData.icon || null,
       color: categoryData.color || '#6B7280',
       sort_order: categoryData.sort_order ? parseInt(categoryData.sort_order) : 0,
-      is_active: categoryData.is_active !== undefined ? Boolean(categoryData.is_active) : true,
-      is_featured: categoryData.is_featured !== undefined ? Boolean(categoryData.is_featured) : false,
+      is_active: categoryData.is_active === 'false' ? false : true,
+      is_featured: categoryData.is_featured === 'true' ? true : false,
       product_count: 0,
       meta_title: categoryData.meta_title || categoryData.name || 'Untitled Category',
       meta_description: categoryData.meta_description || categoryData.description || '',
@@ -253,12 +260,12 @@ router.post('/', upload.single('image'), async (req, res) => {
   }
 });
 
-// Update category
-router.put('/:id', upload.single('image'), async (req, res) => {
+// Update category with R2 image upload
+router.put('/:id', verifyToken, categoryImageUpload, async (req, res) => {
   try {
-    console.log('🔄 Updating category with ID:', req.params.id);
+    console.log('🔄 Updating category with R2, ID:', req.params.id);
     console.log('📦 Request body:', req.body);
-    console.log('📸 File:', req.file ? 'Yes' : 'No');
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const categoryData = req.body;
     const existingCategory = await findById(Category, req.params.id);
@@ -270,28 +277,29 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       });
     }
 
-    // Handle image operations
+    // Handle image operations with R2
     let imageUrl = existingCategory.image;
     
-    // Handle new image upload
-    if (req.file) {
+    // Handle new image upload to R2
+    if (req.files && req.files.image) {
       try {
-        const result = await uploadImage(req.file, 'categories');
+        const r2Service = req.r2Service;
+        const result = await r2Service.uploadSingleImage(req.files.image[0], 'categories');
         imageUrl = result.url;
         
-        // Delete old image if exists
+        // Delete old image from R2 if exists
         if (existingCategory.image) {
           try {
-            const filename = existingCategory.image.split('/').pop();
-            await deleteImage(filename);
+            await r2Service.deleteImage(existingCategory.image);
+            console.log('🗑️ Old R2 image deleted');
           } catch (deleteError) {
-            console.error('Error deleting old image:', deleteError);
+            console.error('❌ Error deleting old R2 image:', deleteError);
           }
         }
         
-        console.log(`New image uploaded: ${imageUrl}`);
+        console.log(`✅ New R2 image uploaded: ${imageUrl}`);
       } catch (uploadError) {
-        console.error('Error uploading image:', uploadError);
+        console.error('❌ R2 upload error:', uploadError);
       }
     }
 
@@ -306,8 +314,8 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     if (categoryData.icon !== undefined) updateData.icon = categoryData.icon;
     if (categoryData.color !== undefined) updateData.color = categoryData.color;
     if (categoryData.sort_order !== undefined) updateData.sort_order = parseInt(categoryData.sort_order);
-    if (categoryData.is_active !== undefined) updateData.is_active = Boolean(categoryData.is_active);
-    if (categoryData.is_featured !== undefined) updateData.is_featured = Boolean(categoryData.is_featured);
+    if (categoryData.is_active !== undefined) updateData.is_active = categoryData.is_active === 'false' ? false : true;
+    if (categoryData.is_featured !== undefined) updateData.is_featured = categoryData.is_featured === 'true' ? true : false;
     if (categoryData.meta_title !== undefined) updateData.meta_title = categoryData.meta_title;
     if (categoryData.meta_description !== undefined) updateData.meta_description = categoryData.meta_description;
     if (categoryData.meta_keywords !== undefined) {
@@ -323,7 +331,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
       
-      const existingSlug = await findOne(Category, { 
+      const existingSlug = await Category.findOne({ 
         slug: newSlug, 
         _id: { $ne: req.params.id } 
       });
@@ -385,14 +393,14 @@ router.delete('/:id', async (req, res) => {
 
    
 
-    // Delete category image if exists
+    // Delete category image from R2 if exists
     if (category.image) {
       try {
-        const filename = category.image.split('/').pop();
-        await deleteImage(filename);
-        console.log(`Deleted image: ${filename}`);
+        const r2Service = new R2ImageService();
+        await r2Service.deleteImage(category.image);
+        console.log(`✅ Deleted R2 image: ${category.image}`);
       } catch (deleteError) {
-        console.error('Error deleting image:', deleteError);
+        console.error('❌ Error deleting R2 image:', deleteError);
       }
     }
 

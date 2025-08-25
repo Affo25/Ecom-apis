@@ -24,7 +24,6 @@ const reviewSchema = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
     client_id: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true
     },
   name: { type: String, required: true },
   slug: { type: String, required: true, unique: true },

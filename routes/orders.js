@@ -119,19 +119,62 @@ router.get('/auth-test', verifyToken, (req, res) => {
 // Get all orders (admin only)
 router.get('/', async (req, res) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { 
+      status, 
+      order_number,
+      customer_name,
+      customer_email,
+      total_min,
+      total_max,
+      date_from,
+      date_to,
+      payment_method,
+      page = 1, 
+      limit = 20,
+      sort = 'createdAt',
+      order = 'desc'
+    } = req.query;
     
+    // Build filter object with advanced filtering
     const filter = {};
     if (status) filter.status = status;
+    if (order_number) filter.orderNumber = { $regex: order_number, $options: 'i' };
+    if (customer_name) filter['customer.name'] = { $regex: customer_name, $options: 'i' };
+    if (customer_email) filter['customer.email'] = { $regex: customer_email, $options: 'i' };
+    if (payment_method) filter.paymentMethod = payment_method;
+    
+    // Price range filter
+    if (total_min || total_max) {
+      filter.totalAmount = {};
+      if (total_min) filter.totalAmount.$gte = parseFloat(total_min);
+      if (total_max) filter.totalAmount.$lte = parseFloat(total_max);
+    }
+    
+    // Date range filter
+    if (date_from || date_to) {
+      filter.createdAt = {};
+      if (date_from) filter.createdAt.$gte = new Date(date_from);
+      if (date_to) filter.createdAt.$lte = new Date(date_to);
+    }
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
-    const orders = await findAll(Order, filter, {
-      sort: { createdAt: -1 },
-      skip: skip,
-      limit: parseInt(limit),
-      lean: true
-    });
+    // Build sort object
+    const sortObj = {};
+    sortObj[sort] = order === 'desc' ? -1 : 1;
+    
+    // Use Mongoose populate instead of findAll to get product details
+    const orders = await Order.find(filter)
+      .populate({
+        path: 'items.product',
+        select: 'name description images sku price sale_price stock_status weight'
+      })
+      .sort(sortObj)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+    
+    console.log('📦 Orders fetched with populated products:', orders.length);
     
     const total = await countDocuments(Order, filter);
     const totalPages = Math.ceil(total / parseInt(limit));
@@ -147,6 +190,7 @@ router.get('/', async (req, res) => {
           total,
           hasNext: parseInt(page) < totalPages,
           hasPrev: parseInt(page) > 1,
+          limit: parseInt(limit)
         }
       }
     });
@@ -163,7 +207,12 @@ router.get('/', async (req, res) => {
 // Get single order
 router.get('/:id', async (req, res) => {
   try {
-    const order = await findById(Order, req.params.id);
+    const order = await Order.findById(req.params.id)
+      .populate({
+        path: 'items.product',
+        select: 'name description images sku price sale_price stock_status weight categories tags'
+      })
+      .lean();
     
     if (!order) {
       return res.status(404).json({ 
@@ -171,6 +220,8 @@ router.get('/:id', async (req, res) => {
         message: 'Order not found' 
       });
     }
+    
+    console.log('📦 Single order fetched with populated products:', order._id);
     
     res.json({
       success: true,

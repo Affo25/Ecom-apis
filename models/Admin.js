@@ -21,6 +21,30 @@ const adminSchema = new mongoose.Schema({
     type: String,
     default: 'customer',
   },
+   isReset: {
+    type: Boolean,
+    default: false,
+  },
+   reset_code: {
+    type: String,
+    default: '',
+  },
+  reset_code_expires: {
+    type: Date,
+    default: null,
+  },
+  reset_attempts: {
+    type: Number,
+    default: 0,
+  },
+  reset_token: {
+    type: String,
+    default: '',
+  },
+  lastPasswordChange: {
+    type: Date,
+    default: null,
+  },
   permissions: {
     type: [String],
     default: ['read', 'write', 'delete'],

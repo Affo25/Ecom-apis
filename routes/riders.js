@@ -6,7 +6,9 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 
 // Import local image handling configuration
-const { uploadImage, deleteImage, getImageUrl } = require('../config/cloudinary');
+
+const R2ImageService = require('../services/R2ImageService');
+const { riderImageUpload } = require('../middleware/r2Upload');
 
 // Import Rider model
 const Rider = require('../models/Rider');
@@ -233,84 +235,61 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create new rider
-router.post('/', uploadFields, async (req, res) => {
+// Create new rider with R2 image upload
+router.post('/', riderImageUpload, async (req, res) => {
   try {
-    console.log('🆕 Creating new rider');
+    console.log('🆕 Creating new rider with R2');
     console.log('📦 Request body:', req.body);
     console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const riderData = req.body;
     
-    // Handle multiple file uploads
-    let imageUrl = '';
-    let cnicFrontImageUrl = '';
-    let cnicBackImageUrl = '';
-    let bikeDocumentUrl = '';
+    // Handle multiple file uploads to R2
+    const uploadedUrls = {
+      image: '',
+      cnicFrontImage: '',
+      cnicBackImage: '',
+      bikeDocument: ''
+    };
 
-    // Upload rider profile image
-    if (req.files && req.files.image && req.files.image[0]) {
-      console.log('📤 Uploading rider profile image...');
+    // Upload images to R2 using simplified approach
+    if (req.files && Object.keys(req.files).length > 0) {
+      console.log('📤 Uploading rider images to R2...');
       try {
-        const result = await uploadImage(req.files.image[0], 'riders/profiles');
-        imageUrl = result.url;
-        console.log(`Profile image uploaded: ${imageUrl}`);
-      } catch (uploadError) {
-        console.error('Error uploading profile image:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload rider profile image',
-          error: uploadError.message
+        const r2Service = req.r2Service;
+        
+        // Convert req.files format for R2 service
+        const imageFiles = {};
+        for (const fieldName in req.files) {
+          if (req.files[fieldName] && req.files[fieldName][0]) {
+            imageFiles[fieldName] = req.files[fieldName][0];
+          }
+        }
+        
+        // Create a temporary rider to get an ID for folder organization
+        const tempRider = new Rider({
+          fullName: riderData.fullName || 'Temp',
+          phone: riderData.phone || '0000000000',
+          address: riderData.address || 'Temp Address'
         });
-      }
-    }
-
-    // Upload CNIC front image
-    if (req.files && req.files.cnicFrontImage && req.files.cnicFrontImage[0]) {
-      console.log('📤 Uploading CNIC front image...');
-      try {
-        const result = await uploadImage(req.files.cnicFrontImage[0], 'riders/cnic');
-        cnicFrontImageUrl = result.url;
-        console.log(`CNIC front image uploaded: ${cnicFrontImageUrl}`);
+        const savedTempRider = await tempRider.save();
+        const riderId = savedTempRider._id.toString();
+        
+        // Upload all files and update URLs
+        for (const [fieldName, file] of Object.entries(imageFiles)) {
+          const result = await r2Service.uploadSingleImage(file, 'riders', `${riderId}_${fieldName}`);
+          uploadedUrls[fieldName] = result.url;
+          console.log(`✅ R2 ${fieldName} uploaded: ${result.url}`);
+        }
+        
+        // Delete temp rider and create real one with proper data
+        await Rider.findByIdAndDelete(riderId);
+        
       } catch (uploadError) {
-        console.error('Error uploading CNIC front image:', uploadError);
+        console.error('❌ R2 upload error:', uploadError);
         return res.status(400).json({
           success: false,
-          message: 'Failed to upload CNIC front image',
-          error: uploadError.message
-        });
-      }
-    }
-
-    // Upload CNIC back image
-    if (req.files && req.files.cnicBackImage && req.files.cnicBackImage[0]) {
-      console.log('📤 Uploading CNIC back image...');
-      try {
-        const result = await uploadImage(req.files.cnicBackImage[0], 'riders/cnic');
-        cnicBackImageUrl = result.url;
-        console.log(`CNIC back image uploaded: ${cnicBackImageUrl}`);
-      } catch (uploadError) {
-        console.error('Error uploading CNIC back image:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload CNIC back image',
-          error: uploadError.message
-        });
-      }
-    }
-
-    // Upload bike document PDF
-    if (req.files && req.files.bikeDocument && req.files.bikeDocument[0]) {
-      console.log('📤 Uploading bike document...');
-      try {
-        const result = await uploadImage(req.files.bikeDocument[0], 'riders/documents');
-        bikeDocumentUrl = result.url;
-        console.log(`Bike document uploaded: ${bikeDocumentUrl}`);
-      } catch (uploadError) {
-        console.error('Error uploading bike document:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload bike document',
+          message: 'Failed to upload rider images to R2',
           error: uploadError.message
         });
       }
@@ -324,10 +303,10 @@ router.post('/', uploadFields, async (req, res) => {
       address: riderData.address || '',
       vehicleType: riderData.vehicleType || 'bike',
       licenseNumber: riderData.licenseNumber || '',
-      image: imageUrl,
-      cnicFrontImage: cnicFrontImageUrl,
-      cnicBackImage: cnicBackImageUrl,
-      bikeDocument: bikeDocumentUrl,
+      image: uploadedUrls.image,
+      cnicFrontImage: uploadedUrls.cnicFrontImage,
+      cnicBackImage: uploadedUrls.cnicBackImage,
+      bikeDocument: uploadedUrls.bikeDocument,
       isAvailable: riderData.isAvailable !== undefined ? Boolean(riderData.isAvailable) : true,
     };
 
@@ -380,8 +359,8 @@ router.post('/', uploadFields, async (req, res) => {
   }
 });
 
-// Update rider
-router.put('/:id', uploadFields, async (req, res) => {
+// Update rider with R2 image upload
+router.put('/:id', riderImageUpload, async (req, res) => {
   try {
     console.log('🔄 Updating rider with ID:', req.params.id);
     console.log('📦 Request body:', req.body);
@@ -417,97 +396,86 @@ router.put('/:id', uploadFields, async (req, res) => {
       };
     }
 
-    // Handle profile image update
-    if (req.files && req.files.image && req.files.image[0]) {
-      console.log('📤 Uploading new rider profile image...');
+    // Handle multiple file updates with R2
+    if (req.files && Object.keys(req.files).length > 0) {
+      console.log('📤 Updating rider files with R2...');
       try {
-        // Delete old image if exists
-        if (existingRider.image) {
-          const filename = existingRider.image.split('/').pop();
-          await deleteImage(filename);
-          console.log(`Deleted old profile image: ${filename}`);
+        const r2Service = req.r2Service;
+        const riderId = existingRider._id.toString();
+        
+        // Handle profile image update
+        if (req.files.image && req.files.image[0]) {
+          // Delete old image from R2 if exists
+          if (existingRider.image) {
+            try {
+              await r2Service.deleteImage(existingRider.image);
+              console.log('🗑️ Old profile image deleted from R2');
+            } catch (deleteError) {
+              console.error('❌ Error deleting old profile image from R2:', deleteError);
+            }
+          }
+          
+          const result = await r2Service.uploadSingleImage(req.files.image[0], 'riders', `${riderId}_image`);
+          updateData.image = result.url;
+          console.log(`✅ New profile image uploaded to R2: ${result.url}`);
         }
 
-        const result = await uploadImage(req.files.image[0], 'riders/profiles');
-        updateData.image = result.url;
-        console.log(`New profile image uploaded: ${result.url}`);
-      } catch (uploadError) {
-        console.error('Error uploading profile image:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload rider profile image',
-          error: uploadError.message
-        });
-      }
-    }
-
-    // Handle CNIC front image update
-    if (req.files && req.files.cnicFrontImage && req.files.cnicFrontImage[0]) {
-      console.log('📤 Uploading new CNIC front image...');
-      try {
-        // Delete old CNIC front image if exists
-        if (existingRider.cnicFrontImage) {
-          const filename = existingRider.cnicFrontImage.split('/').pop();
-          await deleteImage(filename);
-          console.log(`Deleted old CNIC front image: ${filename}`);
+        // Handle CNIC front image update
+        if (req.files.cnicFrontImage && req.files.cnicFrontImage[0]) {
+          // Delete old CNIC front image from R2 if exists
+          if (existingRider.cnicFrontImage) {
+            try {
+              await r2Service.deleteImage(existingRider.cnicFrontImage);
+              console.log('🗑️ Old CNIC front image deleted from R2');
+            } catch (deleteError) {
+              console.error('❌ Error deleting old CNIC front image from R2:', deleteError);
+            }
+          }
+          
+          const result = await r2Service.uploadSingleImage(req.files.cnicFrontImage[0], 'riders', `${riderId}_cnicFront`);
+          updateData.cnicFrontImage = result.url;
+          console.log(`✅ New CNIC front image uploaded to R2: ${result.url}`);
         }
 
-        const result = await uploadImage(req.files.cnicFrontImage[0], 'riders/cnic');
-        updateData.cnicFrontImage = result.url;
-        console.log(`New CNIC front image uploaded: ${result.url}`);
-      } catch (uploadError) {
-        console.error('Error uploading CNIC front image:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload CNIC front image',
-          error: uploadError.message
-        });
-      }
-    }
-
-    // Handle CNIC back image update
-    if (req.files && req.files.cnicBackImage && req.files.cnicBackImage[0]) {
-      console.log('📤 Uploading new CNIC back image...');
-      try {
-        // Delete old CNIC back image if exists
-        if (existingRider.cnicBackImage) {
-          const filename = existingRider.cnicBackImage.split('/').pop();
-          await deleteImage(filename);
-          console.log(`Deleted old CNIC back image: ${filename}`);
+        // Handle CNIC back image update
+        if (req.files.cnicBackImage && req.files.cnicBackImage[0]) {
+          // Delete old CNIC back image from R2 if exists
+          if (existingRider.cnicBackImage) {
+            try {
+              await r2Service.deleteImage(existingRider.cnicBackImage);
+              console.log('🗑️ Old CNIC back image deleted from R2');
+            } catch (deleteError) {
+              console.error('❌ Error deleting old CNIC back image from R2:', deleteError);
+            }
+          }
+          
+          const result = await r2Service.uploadSingleImage(req.files.cnicBackImage[0], 'riders', `${riderId}_cnicBack`);
+          updateData.cnicBackImage = result.url;
+          console.log(`✅ New CNIC back image uploaded to R2: ${result.url}`);
         }
 
-        const result = await uploadImage(req.files.cnicBackImage[0], 'riders/cnic');
-        updateData.cnicBackImage = result.url;
-        console.log(`New CNIC back image uploaded: ${result.url}`);
-      } catch (uploadError) {
-        console.error('Error uploading CNIC back image:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload CNIC back image',
-          error: uploadError.message
-        });
-      }
-    }
-
-    // Handle bike document update
-    if (req.files && req.files.bikeDocument && req.files.bikeDocument[0]) {
-      console.log('📤 Uploading new bike document...');
-      try {
-        // Delete old bike document if exists
-        if (existingRider.bikeDocument) {
-          const filename = existingRider.bikeDocument.split('/').pop();
-          await deleteImage(filename);
-          console.log(`Deleted old bike document: ${filename}`);
+        // Handle bike document update
+        if (req.files.bikeDocument && req.files.bikeDocument[0]) {
+          // Delete old bike document from R2 if exists
+          if (existingRider.bikeDocument) {
+            try {
+              await r2Service.deleteImage(existingRider.bikeDocument);
+              console.log('🗑️ Old bike document deleted from R2');
+            } catch (deleteError) {
+              console.error('❌ Error deleting old bike document from R2:', deleteError);
+            }
+          }
+          
+          const result = await r2Service.uploadSingleImage(req.files.bikeDocument[0], 'riders', `${riderId}_bikeDoc`);
+          updateData.bikeDocument = result.url;
+          console.log(`✅ New bike document uploaded to R2: ${result.url}`);
         }
-
-        const result = await uploadImage(req.files.bikeDocument[0], 'riders/documents');
-        updateData.bikeDocument = result.url;
-        console.log(`New bike document uploaded: ${result.url}`);
+        
       } catch (uploadError) {
-        console.error('Error uploading bike document:', uploadError);
+        console.error('❌ R2 file update error:', uploadError);
         return res.status(400).json({
           success: false,
-          message: 'Failed to upload bike document',
+          message: 'Failed to update rider files with R2',
           error: uploadError.message
         });
       }

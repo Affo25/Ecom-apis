@@ -4,7 +4,9 @@ const Category = require('../models/Category');
 const Subcategory = require('../models/Subcategory');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const { uploadImage, deleteImage } = require('../config/cloudinary');
+const R2ImageService = require('../services/R2ImageService');
+const { subcategoryImageUpload } = require('../middleware/r2Upload');
+const { verifyToken } = require('../middleware/auth');
 
 // Import generic database service
 const {
@@ -21,22 +23,6 @@ const {
   distinct,
   updateMany
 } = require('../services/mongoose_service');
-
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB per file
-    files: 1 // Maximum 1 file for subcategory image
-  },
-  fileFilter: function (req, file, cb) {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
-  }
-});
 
 // Get all subcategories with filtering, sorting, and pagination
 router.get('/', async (req, res) => {
@@ -209,11 +195,12 @@ router.get('/:id', async (req, res) => {
 
 
 
-// Create new subcategory
-router.post('/', upload.single('image'), async (req, res) => {
+// Create new subcategory with R2 image upload
+router.post('/', verifyToken, subcategoryImageUpload, async (req, res) => {
   try {
-    console.log('🆕 Creating new subcategory');
+    console.log('🆕 Creating new subcategory with R2');
     console.log('📦 Request body:', req.body);
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const subcategoryData = req.body;
     console.log('📦 subcategoryData:', subcategoryData);
@@ -243,15 +230,16 @@ router.post('/', upload.single('image'), async (req, res) => {
       });
     }
 
-    // Handle image upload
+    // Handle image upload to R2
     let imageUrl = null;
-    if (req.file) {
+    if (req.files && req.files.image) {
       try {
-        const result = await uploadImage(req.file, 'subcategories');
+        const r2Service = req.r2Service;
+        const result = await r2Service.uploadSingleImage(req.files.image[0], 'subcategories');
         imageUrl = result.url;
-        console.log(`Image uploaded: ${imageUrl}`);
+        console.log(`✅ R2 Image uploaded: ${imageUrl}`);
       } catch (uploadError) {
-        console.error('Error uploading image:', uploadError);
+        console.error('❌ R2 upload error:', uploadError);
       }
     }
 
@@ -267,6 +255,9 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     // Prepare subcategory data with proper boolean handling
     const newSubcategoryData = {
+      // Required client_id - use admin's ID from auth
+      client_id: req.user?.id || req.admin?.id || new require('mongoose').Types.ObjectId(),
+      
       name: subcategoryData.name,
       slug: finalSlug,
       description: subcategoryData.description || '',
@@ -330,12 +321,12 @@ router.post('/', upload.single('image'), async (req, res) => {
   }
 });
 
-// Update subcategory
-router.put('/:id', upload.single('image'), async (req, res) => {
+// Update subcategory with R2 image upload
+router.put('/:id', verifyToken, subcategoryImageUpload, async (req, res) => {
   try {
-    console.log('🔄 Updating subcategory with ID:', req.params.id);
+    console.log('🔄 Updating subcategory with R2, ID:', req.params.id);
     console.log('📦 Request body:', req.body);
-    console.log('📸 File:', req.file ? 'Yes' : 'No');
+    console.log('📸 Files:', req.files ? Object.keys(req.files) : 'No files');
 
     const subcategoryData = req.body;
     const existingSubcategory = await findById(Subcategory, req.params.id);
@@ -358,28 +349,29 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       }
     }
 
-    // Handle image operations
+    // Handle image operations with R2
     let imageUrl = existingSubcategory.image;
     
-    // Handle new image upload
-    if (req.file) {
+    // Handle new image upload to R2
+    if (req.files && req.files.image) {
       try {
-        const result = await uploadImage(req.file, 'subcategories');
+        const r2Service = req.r2Service;
+        const result = await r2Service.uploadSingleImage(req.files.image[0], 'subcategories');
         imageUrl = result.url;
         
-        // Delete old image if exists
+        // Delete old image from R2 if exists
         if (existingSubcategory.image) {
           try {
-            const filename = existingSubcategory.image.split('/').pop();
-            await deleteImage(filename);
+            await r2Service.deleteImage(existingSubcategory.image);
+            console.log('🗑️ Old R2 image deleted');
           } catch (deleteError) {
-            console.error('Error deleting old image:', deleteError);
+            console.error('❌ Error deleting old R2 image:', deleteError);
           }
         }
         
-        console.log(`New image uploaded: ${imageUrl}`);
+        console.log(`✅ New R2 image uploaded: ${imageUrl}`);
       } catch (uploadError) {
-        console.error('Error uploading image:', uploadError);
+        console.error('❌ R2 upload error:', uploadError);
       }
     }
 
@@ -397,8 +389,8 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     if (subcategoryData.icon !== undefined) updateData.icon = subcategoryData.icon;
     if (subcategoryData.color !== undefined) updateData.color = subcategoryData.color;
     if (subcategoryData.sort_order !== undefined) updateData.sort_order = parseInt(subcategoryData.sort_order);
-    if (subcategoryData.is_active !== undefined) updateData.is_active = Boolean(subcategoryData.is_active);
-    if (subcategoryData.is_featured !== undefined) updateData.is_featured = Boolean(subcategoryData.is_featured);
+    if (subcategoryData.is_active !== undefined) updateData.is_active = subcategoryData.is_active === 'false' ? false : true;
+    if (subcategoryData.is_featured !== undefined) updateData.is_featured = subcategoryData.is_featured === 'true' ? true : false;
     if (subcategoryData.meta_title !== undefined) updateData.meta_title = subcategoryData.meta_title;
     if (subcategoryData.meta_description !== undefined) updateData.meta_description = subcategoryData.meta_description;
     if (subcategoryData.meta_keywords !== undefined) {

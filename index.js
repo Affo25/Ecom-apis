@@ -93,13 +93,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser()); // Add cookie parser middleware
 
-// Serve uploaded images from uploads directory - MOVED BEFORE OTHER ROUTES
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res, path) => {
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  }
-}));
+// Note: Local file serving removed - all images now stored in Cloudflare R2
 
 // General rate limiting
 const generalLimiter = rateLimit({
@@ -251,34 +245,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Test uploads directory
-app.get('/api/uploads/test', (req, res) => {
-  const fs = require('fs');
-  const uploadsPath = path.join(__dirname, 'uploads');
-  
-  try {
-    // Check if uploads directory exists
-    if (!fs.existsSync(uploadsPath)) {
-      fs.mkdirSync(uploadsPath, { recursive: true });
-    }
-    
-    // List files in uploads directory
-    const files = fs.readdirSync(uploadsPath);
-    
-    res.json({
-      success: true,
-      message: 'Uploads directory accessible',
-      uploadsPath,
-      files: files.length > 0 ? files : 'No files found',
-      staticRoute: '/uploads working correctly'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error accessing uploads directory',
-      error: error.message
-    });
-  }
+// R2 storage test endpoint
+app.get('/api/upload/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'R2 storage is active',
+    storage: 'Cloudflare R2',
+    uploadPath: 'All images stored in R2 bucket',
+    note: 'Local file uploads have been disabled in favor of R2 storage'
+  });
 });
 
 // Test endpoint
@@ -304,6 +279,10 @@ app.use('/api/admin', ensureDbConnection, require('./routes/admin'));
 app.use('/api/auth', ensureDbConnection, require('./routes/auth'));
 app.use('/api/riders', ensureDbConnection, require('./routes/riders'));
 app.use('/api/cms', ensureDbConnection, require('./routes/cms')); // 📍 CMS ROUTES REGISTERED HERE
+app.use('/api/r2-images', ensureDbConnection, require('./routes/r2Images')); // 🗄️ CLOUDFLARE R2 IMAGE ROUTES
+app.use('/api/test-r2', ensureDbConnection, require('./routes/test-r2')); // 🧪 R2 TESTING ROUTES
+app.use('/api/pages-content', ensureDbConnection, require('./routes/pages-content')); // 📄 PAGES CONTENT ROUTES
+app.use('/api/contact', ensureDbConnection, require('./routes/contact')); // 📞 CONTACT PAGES ROUTES
 
 
 // Error handling middleware
