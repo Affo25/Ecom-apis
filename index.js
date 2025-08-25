@@ -280,7 +280,6 @@ app.use('/api/auth', ensureDbConnection, require('./routes/auth'));
 app.use('/api/riders', ensureDbConnection, require('./routes/riders'));
 app.use('/api/cms', ensureDbConnection, require('./routes/cms')); // 📍 CMS ROUTES REGISTERED HERE
 app.use('/api/r2-images', ensureDbConnection, require('./routes/r2Images')); // 🗄️ CLOUDFLARE R2 IMAGE ROUTES
-app.use('/api/test-r2', ensureDbConnection, require('./routes/test-r2')); // 🧪 R2 TESTING ROUTES
 app.use('/api/pages-content', ensureDbConnection, require('./routes/pages-content')); // 📄 PAGES CONTENT ROUTES
 app.use('/api/contact', ensureDbConnection, require('./routes/contact')); // 📞 CONTACT PAGES ROUTES
 
